@@ -1,0 +1,292 @@
+openapi: "3.0.3"
+info:
+  title: ASR Service POC
+  version: "0.1.0"
+  description: |
+    Automatic Speech Recognition service — POC.
+    Primary engine: Qwen3-ASR-1.7B.
+    Target hardware: ASUS Ascent GX10 (NVIDIA GB10 Grace Blackwell).
+
+    ## Streaming (SSE)
+    `POST /v1/asr/stream` accepts raw PCM audio as chunked request body and
+    returns partial transcripts via Server-Sent Events.
+
+    ## Batch
+    `POST /v1/asr/transcribe` accepts a file upload and returns full transcript JSON.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (Docker compose)
+
+paths:
+  /v1/asr/stream:
+    post:
+      summary: Stream audio for real-time transcription
+      operationId: transcribeStream
+      description: >
+        Accepts a continuous stream of raw PCM audio bytes (`application/octet-stream`)
+        and returns partial and final transcripts via SSE (`text/event-stream`).
+        Client sends audio in chunks; server emits `partial` events as transcription
+        progresses and a `final` event when the stream ends or silence is detected.
+      parameters:
+        - in: header
+          name: X-Audio-Sample-Rate
+          schema:
+            type: integer
+            default: 16000
+          description: Audio sample rate (Hz). Supported: 8000, 16000.
+        - in: header
+          name: X-Audio-Channels
+          schema:
+            type: integer
+            default: 1
+          description: Number of audio channels. Only mono is supported.
+        - in: header
+          name: X-Audio-Format
+          schema:
+            type: string
+            default: s16le
+          description: PCM sample format. Supported: s16le (16-bit signed little-endian).
+        - in: header
+          name: X-Language
+          schema:
+            type: string
+            default: id
+          description: ISO 639-1 language code hint. Supported: id (Indonesian).
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Raw PCM audio bytes, streamed in chunks.
+      responses:
+        "200":
+          description: SSE stream of partial and final transcripts
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/SSEStream"
+        "400":
+          description: Invalid audio format or parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/asr/transcribe:
+    post:
+      summary: Transcribe an audio file (batch)
+      operationId: transcribeFile
+      description: >
+        Upload a complete audio file and receive the full transcript.
+        Supported formats: WAV, MP3, FLAC, OGG (via ffmpeg).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe.
+                language:
+                  type: string
+                  default: id
+                  description: Language code hint (ISO 639-1).
+            encoding:
+              file:
+                contentType: audio/wav,audio/mpeg,audio/flac,audio/ogg
+      responses:
+        "200":
+          description: Full transcript result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscribeResponse"
+        "400":
+          description: Unsupported audio format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/models:
+    get:
+      summary: Get loaded model info
+      operationId: getModels
+      responses:
+        "200":
+          description: Model information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsResponse"
+
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Model not loaded / GPU unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    SSEStream:
+      type: string
+      format: binary
+      description: >
+        Server-Sent Events stream. Events:
+
+        - `ready`: Server ready to receive audio.
+        - `partial`: Updated transcript (replaces whole text).
+        - `final`: Final transcript for completed utterance.
+        - `error`: Processing error.
+
+    SSEPartialEvent:
+      type: object
+      required:
+        - text
+        - is_final
+        - t_ms
+      properties:
+        text:
+          type: string
+          description: Accumulated transcription text (replaces previous partial).
+        is_final:
+          type: boolean
+          default: false
+        t_ms:
+          type: integer
+          description: Audio timestamp (ms) at last processed token.
+
+    SSEFinalEvent:
+      type: object
+      required:
+        - text
+        - is_final
+        - t_ms
+        - language
+      properties:
+        text:
+          type: string
+          description: Final transcription text.
+        is_final:
+          type: boolean
+          enum: [true]
+        t_ms:
+          type: integer
+        language:
+          type: string
+          description: Detected or hinted language code.
+          example: "id"
+
+    SSEErrorEvent:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code.
+          enum:
+            - AUDIO_FORMAT
+            - STREAM_TIMEOUT
+            - INTERNAL_ERROR
+            - SESSION_LIMIT
+        message:
+          type: string
+          description: Human-readable error message.
+
+    TranscribeResponse:
+      type: object
+      required:
+        - text
+        - language
+        - duration_ms
+      properties:
+        text:
+          type: string
+          description: Full transcription text with punctuation.
+        language:
+          type: string
+          example: "id"
+        duration_ms:
+          type: integer
+          description: Audio duration in milliseconds.
+        processing_ms:
+          type: integer
+          description: Processing time in milliseconds.
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - model_loaded
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        model:
+          type: string
+          description: Model HF ID.
+          example: "Qwen/Qwen3-ASR-1.7B-hf"
+        device:
+          type: string
+          description: Torch device string.
+          example: "cuda:0"
+        model_loaded:
+          type: boolean
+
+    ModelsResponse:
+      type: object
+      required:
+        - models
+      properties:
+        models:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              device:
+                type: string
+              dtype:
+                type: string
+              status:
+                type: string
+                enum: [loaded, loading, error]
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

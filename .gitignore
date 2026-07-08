@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# HuggingFace cache (mounted volume)
+.hf_cache/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Test outputs
+.pytest_cache/
+htmlcov/
+.coverage
+
+# OpenCode internal
+.opencode/
+opencode.json
+node_modules/
+text.txt
