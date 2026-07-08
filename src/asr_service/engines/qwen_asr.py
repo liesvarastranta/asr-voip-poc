@@ -54,21 +54,23 @@ class Qwen3ASREngine(ASREngine):
             "processing_ms": elapsed_ms,
         }
 
-    async def infer_chunk(self, audio_bytes: bytes, is_final: bool = False) -> str:
+    async def infer_chunk(self, audio_bytes: bytes, is_final: bool = False, language: str = "id", sample_rate: int = 16000) -> str:
         import torch
         import soundfile as sf
 
         audio_np = pcm_bytes_to_float32(audio_bytes)
 
-        # ponytail: temp WAV file — simplest reliable approach
-        # upgrade: in-memory BytesIO if processor supports file-like objects
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            sf.write(tmp.name, audio_np, 16000, format="WAV", subtype="PCM_16")
-            tmp_path = tmp.name
+        # ponytail: resample to 16kHz if needed
+        if sample_rate != 16000:
+            from ..audio.resample import resample
+            audio_np = resample(audio_np, sample_rate, 16000)
 
+        fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
         try:
+            sf.write(tmp_path, audio_np, 16000, format="WAV", subtype="PCM_16")
             inputs = self._processor.apply_transcription_request(
-                audio=tmp_path, language="id"
+                audio=tmp_path, language=language
             ).to(self.device, self._model.dtype)
 
             with torch.inference_mode():

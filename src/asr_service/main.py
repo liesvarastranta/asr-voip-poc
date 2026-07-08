@@ -18,13 +18,20 @@ def create_app(engine: ASREngine | None = None) -> FastAPI:
         else:
             engine = MockASREngine()
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        if not engine.is_loaded:
+            await engine.load()
+        yield
+
     app = FastAPI(
         title="ASR Service POC",
         version="0.1.0",
         description="Automatic Speech Recognition — Qwen3-ASR-1.7B on ASUS Ascent GX10",
+        lifespan=lifespan,
     )
 
-    # ponytail: set engine eagerly — httpx ASGITransport doesn't trigger lifespan
+    # ponytail: set engine eagerly for test compat — ASGITransport doesn't trigger lifespan
     app.state.engine = engine
 
     app.include_router(health.router)

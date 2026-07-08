@@ -1,28 +1,6 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from fastapi import FastAPI
-from asr_service.api.health import router
 from asr_service.engines.mock import MockASREngine
-
-
-@pytest.fixture
-def engine():
-    return MockASREngine()
-
-
-@pytest.fixture
-def app(engine):
-    app = FastAPI()
-    app.state.engine = engine
-    app.include_router(router)
-    return app
-
-
-@pytest.fixture
-async def client(app, engine):
-    await engine.load()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
 
 
 @pytest.mark.asyncio

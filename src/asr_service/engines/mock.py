@@ -4,6 +4,9 @@ from .base import ASREngine
 class MockASREngine(ASREngine):
     def __init__(self):
         self._loaded = False
+        self.model_id = "mock/model"
+        self.device = "cpu"
+        self.dtype_str = "float32"
 
     async def load(self) -> None:
         await asyncio.sleep(0.001)
@@ -17,7 +20,7 @@ class MockASREngine(ASREngine):
             "processing_ms": 10,
         }
 
-    async def infer_chunk(self, audio_bytes: bytes, is_final: bool = False) -> str:
+    async def infer_chunk(self, audio_bytes: bytes, is_final: bool = False, language: str = "id", sample_rate: int = 16000) -> str:
         return "mock final" if is_final else "mock partial"
 
     @property

@@ -10,8 +10,8 @@ async def health(request: Request):
     return HealthResponse(
         status="ok" if engine.is_loaded else "degraded",
         model_loaded=engine.is_loaded,
-        model=getattr(engine, "model_id", None),
-        device=getattr(engine, "device", None),
+        model=engine.model_id,
+        device=engine.device,
     )
 
 
@@ -19,8 +19,8 @@ async def health(request: Request):
 async def models(request: Request):
     engine = request.app.state.engine
     return ModelsResponse(models=[{
-        "id": getattr(engine, "model_id", "unknown"),
-        "device": getattr(engine, "device", "unknown"),
-        "dtype": getattr(engine, "dtype_str", "unknown"),
+        "id": engine.model_id,
+        "device": engine.device,
+        "dtype": engine.dtype_str,
         "status": "loaded" if engine.is_loaded else "loading",
     }])
