@@ -1,0 +1,11 @@
+port: 7880
+rtc:
+  udp_port: 7881
+  use_external_ip: false
+  tcp_port: 7881
+redis:
+  address: localhost:6379
+keys:
+  # GENERATE WITH: docker run --rm livekit/livekit-server generate-keys
+  # Replace before deploy
+  LIVEKIT_API_KEY: LIVEKIT_API_SECRET
