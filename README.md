@@ -4,9 +4,9 @@ Real-time voice pipeline: ASR → LLM → TTS, native WSL2 with CUDA acceleratio
 
 ## Demo
 
-[![Demo video](https://raw.githubusercontent.com/liesvarastranta/asr-voip-poc/main/assets-visual/short-demo.mp4)](assets-visual/short-demo.mp4)
+[![Demo thumbnail](assets-visual/thumbnail.png)](assets-visual/short-demo.mp4)
 
-[Download demo video](assets-visual/short-demo.mp4)
+*Klik gambar untuk mengunduh video demo (2.7 MB MP4)*
 
 ## Stack
 
