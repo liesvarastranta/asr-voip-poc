@@ -1,4 +1,4 @@
-"""Qwen ASR STT plugin — calls ASR service at /v1/asr/transcribe."""
+"""Whisper ASR STT plugin — calls ASR service at /v1/asr/transcribe."""
 from __future__ import annotations
 
 import io
@@ -18,7 +18,7 @@ from livekit.agents.utils import AudioBuffer
 from livekit.agents.types import APIConnectOptions, NOT_GIVEN, NotGivenOr
 
 
-class QwenASRSTT(STT):
+class WhisperASRSTT(STT):
     def __init__(
         self, *, endpoint: str = "http://localhost:18001", language: str = "id"
     ):
@@ -34,11 +34,11 @@ class QwenASRSTT(STT):
 
     @property
     def model(self) -> str:
-        return "Qwen/Qwen3-ASR-1.7B-hf"
+        return "openai/whisper-small"
 
     @property
     def provider(self) -> str:
-        return "local-gx10"
+        return "local-wsl2"
 
     async def _recognize_impl(
         self,
@@ -47,7 +47,6 @@ class QwenASRSTT(STT):
         language: NotGivenOr[str] = NOT_GIVEN,
         conn_options: APIConnectOptions,
     ) -> SpeechEvent:
-        # Normalize to list of frames
         if isinstance(buffer, rtc.AudioFrame):
             frames = [buffer]
         else:
@@ -58,7 +57,6 @@ class QwenASRSTT(STT):
 
         sample_rate = frames[0].sample_rate
 
-        # Concatenate all PCM int16 data
         all_pcm = bytearray()
         for frame in frames:
             all_pcm.extend(frame.data)
@@ -67,7 +65,6 @@ class QwenASRSTT(STT):
         if num_samples == 0:
             return self._empty_event()
 
-        # Wrap as WAV
         wav_buf = io.BytesIO()
         wav_buf.write(
             struct.pack(
@@ -82,7 +79,7 @@ class QwenASRSTT(STT):
                 sample_rate,
                 sample_rate * 2,
                 2,
-                16,  # bits per sample
+                16,
                 b"data",
                 len(all_pcm),
             )
@@ -90,12 +87,11 @@ class QwenASRSTT(STT):
         wav_buf.write(all_pcm)
         wav_buf.seek(0)
 
-        # POST to ASR service
         lang = self._language
         if language is not NOT_GIVEN and language:
             lang = language
 
-        timeout = conn_options.timeout if conn_options.timeout else 30.0
+        timeout = conn_options.timeout if conn_options.timeout else 120.0
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
             resp = await client.post(
                 f"{self._endpoint}/v1/asr/transcribe",

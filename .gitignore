@@ -24,6 +24,9 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Logs
+logs/
+
 # Docker
 *.log
 
@@ -31,6 +34,15 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Planning
+implementasi.md
+implementasi-plan.md
+
+# Superpowers internal
+.agents/
+docs/superpowers/
+skills-lock.json
 
 # OpenCode internal
 .opencode/

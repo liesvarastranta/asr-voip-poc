@@ -1,49 +1,61 @@
-"""F5-TTS Indonesian voice synthesis service."""
+"""Chatterbox-TTS Indonesian voice synthesis service."""
+import asyncio
 import io
 import os
+import torch
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 import soundfile as sf
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 
-app = FastAPI(title="F5-TTS Indonesian TTS Service", version="0.1.0")
+app = FastAPI(title="Chatterbox-TTS Indonesian", version="0.1.0")
 
-# Lazy-loaded model
-_f5tts = None
-_ref_audio_path = os.getenv("REF_AUDIO_PATH", "ref_audio/ref.wav")
-_ref_text = os.getenv("REF_TEXT", "Selamat pagi, salam sejahtera bagi kita sekalian.")
-_ckpt_dir = os.getenv("CKPT_DIR", "/models/Eempostor/F5-TTS-INDO-FINETUNE-V2")
+_model = None
+MODEL_REPO = "grandhigh/Chatterbox-TTS-Indonesian"
+CKPT_FILE = "t3_cfg.safetensors"
+
 
 def get_model():
-    global _f5tts
-    if _f5tts is None:
-        from f5_tts.api import F5TTS
-        _f5tts = F5TTS(ckpt_file=_ckpt_dir)
-    return _f5tts
+    global _model
+    if _model is None:
+        from chatterbox.tts import ChatterboxTTS
+        _model = ChatterboxTTS.from_pretrained(device="cuda")
+        ckpt_path = hf_hub_download(repo_id=MODEL_REPO, filename=CKPT_FILE)
+        _model.t3.load_state_dict(load_file(ckpt_path, device="cpu"))
+        torch.cuda.empty_cache()
+    return _model
+
 
 @app.get("/health")
 async def health():
     try:
         get_model()
-        return {"status": "ok", "model": "Eempostor/F5-TTS-INDO-FINETUNE-V2"}
+        return {"status": "ok", "model": MODEL_REPO}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
 @app.post("/tts")
-async def synthesize(text: str = Query(..., description="Indonesian text to synthesize")):
-    f5tts = get_model()
-    wav, sr, _ = f5tts.infer(
-        ref_file=_ref_audio_path,
-        ref_text=_ref_text,
-        gen_text=text,
-        file_wave=None,
-        seed=-1,
-    )
+async def synthesize(
+    text: str = Query(..., description="Indonesian text to synthesize"),
+):
+    model = get_model()
+    # ponytail: run blocking generate in thread pool to not block event loop
+    wav = await asyncio.to_thread(model.generate, text)
+    if hasattr(wav, "cpu"):
+        wav = wav.cpu().numpy()
+    wav = wav.squeeze().astype("float32")
     buf = io.BytesIO()
-    sf.write(buf, wav, sr, format="WAV", subtype="PCM_16")
+    sf.write(buf, wav, model.sr, format="WAV", subtype="PCM_16")
     buf.seek(0)
-    return StreamingResponse(buf, media_type="audio/wav",
-                            headers={"Content-Disposition": "inline; filename=speech.wav"})
+    return StreamingResponse(
+        buf,
+        media_type="audio/wav",
+        headers={"Content-Disposition": "inline; filename=speech.wav"},
+    )
+
 
 @app.get("/")
 async def root():
-    return {"service": "F5-TTS Indonesian", "port": int(os.getenv("PORT", "18003"))}
+    return {"service": "Chatterbox-TTS Indonesian", "port": int(os.getenv("PORT", "18003"))}

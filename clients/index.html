@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice AI — Bahasa Indonesia</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.card { background: #1e293b; border-radius: 16px; padding: 32px; max-width: 520px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.4); }
+h1 { font-size: 22px; margin-bottom: 4px; }
+.sub { color: #94a3b8; font-size: 13px; margin-bottom: 24px; }
+
+/* Panel 1: Status */
+.status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: #475569; transition: all 0.3s; }
+.status-dot.listening { background: #3b82f6; animation: pulse 1.5s infinite; }
+.status-dot.thinking { background: #eab308; animation: pulse 1s infinite; }
+.status-dot.speaking { background: #22c55e; animation: pulse 0.8s infinite; }
+.status-dot.connected { background: #22c55e; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.status-text { font-size: 14px; font-weight: 600; }
+.status-text.listening { color: #60a5fa; }
+.status-text.thinking { color: #fde68a; }
+.status-text.speaking { color: #86efac; }
+.status-text.connected { color: #86efac; }
+.status-text.idle { color: #94a3b8; }
+
+.btn { border: none; border-radius: 12px; padding: 14px 32px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; width: 100%; }
+.btn-start { background: #2563eb; color: white; }
+.btn-start:hover { background: #1d4ed8; }
+.btn-start:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+.btn-stop { background: #dc2626; color: white; }
+.btn-stop:hover { background: #b91c1c; }
+.btn-processing { background: #475569; color: #94a3b8; cursor: not-allowed; }
+
+/* Panel 2: Aktivitas */
+.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin: 20px 0 8px; font-weight: 700; }
+.activity { max-height: 120px; overflow-y: auto; font-size: 12px; }
+.activity p { padding: 3px 0; color: #94a3b8; border-bottom: 1px solid #334155; }
+.activity .ev-asr { color: #60a5fa; }
+.activity .ev-llm { color: #fde68a; }
+.activity .ev-tts { color: #86efac; }
+.activity .ev-state { color: #c084fc; }
+.activity .ev-sys { color: #64748b; }
+
+/* Panel 3: Transkripsi */
+.transcript { max-height: 200px; overflow-y: auto; font-size: 14px; }
+.transcript p { padding: 8px 12px; margin: 4px 0; border-radius: 8px; }
+.transcript .user { background: #1e3a5f; color: #93c5fd; }
+.transcript .agent { background: #14532d; color: #86efac; }
+.transcript .interim { opacity: 0.6; font-style: italic; }
+.transcript .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; opacity: 0.7; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Voice AI</h1>
+  <p class="sub">Asisten Bahasa Indonesia</p>
+
+  <!-- Panel 1: Status -->
+  <div class="status-row">
+    <div id="dot" class="status-dot"></div>
+    <div id="statusText" class="status-text idle">Siap</div>
+  </div>
+  <button id="btn" class="btn btn-start" onclick="toggle()">Mulai Bicara</button>
+
+  <!-- Panel 2: Aktivitas Sistem -->
+  <div class="section-title">Aktivitas Sistem</div>
+  <div class="activity" id="activity"></div>
+
+  <!-- Panel 3: Transkripsi -->
+  <div class="section-title">Transkripsi</div>
+  <div class="transcript" id="transcript"></div>
+</div>
+
+<script>
+let room, connected = false;
+const MY_IDENTITY = "web-user";
+
+async function getToken() {
+  const r = await fetch("/token");
+  return await r.json();
+}
+
+function setState(state) {
+  const dot = document.getElementById("dot");
+  const text = document.getElementById("statusText");
+  const labels = {
+    listening: "Mendengarkan...",
+    thinking: "Berfikir...",
+    speaking: "Berbicara...",
+    idle: "Siap",
+    connected: "Terhubung",
+    connecting: "Menghubungkan...",
+    disconnected: "Terputus",
+  };
+  const cls = state in labels ? state : "idle";
+  dot.className = "status-dot " + cls;
+  text.className = "status-text " + cls;
+  text.textContent = labels[state] || state;
+}
+
+function logActivity(text, cls) {
+  const el = document.getElementById("activity");
+  const p = document.createElement("p");
+  if (cls) p.className = cls;
+  const time = new Date().toLocaleTimeString("id-ID", {hour12: false});
+  p.textContent = `[${time}] ${text}`;
+  el.appendChild(p);
+  el.scrollTop = el.scrollHeight;
+}
+
+function addTranscript(text, who, interim) {
+  const el = document.getElementById("transcript");
+  const p = document.createElement("p");
+  p.className = who + (interim ? " interim" : "");
+  const label = document.createElement("div");
+  label.className = "label";
+  label.textContent = who === "user" ? "USER" : "AGENT";
+  p.appendChild(label);
+  p.appendChild(document.createTextNode(text));
+  el.appendChild(p);
+  el.scrollTop = el.scrollHeight;
+  return p;
+}
+
+function updateLastTranscript(text, who) {
+  const el = document.getElementById("transcript");
+  const items = el.querySelectorAll("p." + who);
+  if (items.length > 0) {
+    const last = items[items.length - 1];
+    last.textContent = "";
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = who === "user" ? "USER" : "AGENT";
+    last.appendChild(label);
+    last.appendChild(document.createTextNode(text));
+  } else {
+    addTranscript(text, who, false);
+  }
+}
+
+async function connect() {
+  const btn = document.getElementById("btn");
+  btn.disabled = true;
+  btn.textContent = "Menghubungkan...";
+  setState("connecting");
+  logActivity("Menghubungkan ke LiveKit...", "ev-sys");
+
+  try {
+    const { token, url } = await getToken();
+    room = new LivekitClient.Room();
+
+    // Agent state via attributes
+    room.on(LivekitClient.RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
+      if (participant.isAgent && changed["lk.agent.state"]) {
+        const state = changed["lk.agent.state"];
+        setState(state);
+        logActivity(`Agent state: ${state}`, "ev-state");
+        if (state === "thinking" || state === "speaking") {
+          setMicEnabled(false);
+        } else if (state === "listening" || state === "idle") {
+          setMicEnabled(true);
+        }
+      }
+    });
+
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+      if (p.isAgent) logActivity("Agent bergabung ke room", "ev-sys");
+    });
+
+    room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
+      if (p.isAgent) logActivity("Agent keluar dari room", "ev-sys");
+    });
+
+    // Audio track from agent
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
+      if (track.kind === "audio" && participant.isAgent) {
+        const el = track.attach();
+        el.play().catch(() => {});
+        logActivity("Audio agent diterima", "ev-tts");
+      }
+    });
+
+    await room.connect(url, token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    logActivity("Mikrofon aktif", "ev-sys");
+
+    // Transcription via text stream (new API, replaces deprecated TranscriptionReceived)
+    room.registerTextStreamHandler("lk.transcription", async (reader, participantInfo) => {
+      const isFinal = reader.info.attributes["lk.transcription_final"] === "true";
+      const isAgent = participantInfo.identity !== MY_IDENTITY;
+      const who = isAgent ? "agent" : "user";
+      const evType = isAgent ? (isFinal ? "LLM" : "LLM (interim)") : (isFinal ? "ASR" : "ASR (interim)");
+      const evCls = isAgent ? "ev-llm" : "ev-asr";
+
+      let text = "";
+      for await (const chunk of reader) {
+        text += chunk;
+        if (!isFinal) {
+          updateLastTranscript(text, who);
+          logActivity(`${evType}: "${chunk}"`, evCls);
+        }
+      }
+
+      if (isFinal) {
+        addTranscript(text, who, false);
+        logActivity(`${evType} final: "${text}"`, evCls);
+      }
+    });
+
+    connected = true;
+    setState("connected");
+    btn.textContent = "Berhenti";
+    btn.className = "btn btn-stop";
+    btn.disabled = false;
+  } catch (e) {
+    setState("disconnected");
+    btn.textContent = "Coba Lagi";
+    btn.className = "btn btn-start";
+    btn.disabled = false;
+    logActivity("Error: " + e.message, "ev-sys");
+  }
+}
+
+function disconnect() {
+  if (room) room.disconnect();
+  room = null;
+  connected = false;
+  setState("idle");
+  const btn = document.getElementById("btn");
+  btn.textContent = "Mulai Bicara";
+  btn.className = "btn btn-start";
+  btn.disabled = false;
+  logActivity("Terputus dari LiveKit", "ev-sys");
+}
+
+function setMicEnabled(enabled) {
+  const btn = document.getElementById("btn");
+  if (!enabled) {
+    room.localParticipant.setMicrophoneEnabled(false);
+    btn.disabled = true;
+    btn.textContent = "Memproses...";
+    btn.className = "btn btn-processing";
+    logActivity("Mikrofon dinonaktifkan (agent memproses)", "ev-sys");
+  } else {
+    room.localParticipant.setMicrophoneEnabled(true);
+    btn.disabled = false;
+    btn.textContent = "Berhenti";
+    btn.className = "btn btn-stop";
+    logActivity("Mikrofon aktif kembali", "ev-sys");
+  }
+}
+
+function toggle() {
+  connected ? disconnect() : connect();
+}
+</script>
+</body>
+</html>

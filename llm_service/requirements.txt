@@ -1,0 +1,4 @@
+llama-cpp-python[server]>=0.3.0
+huggingface-hub>=0.26.0
+pydantic>=2.0
+pydantic-settings>=2.0

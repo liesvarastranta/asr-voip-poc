@@ -1,4 +1,4 @@
-"""F5-TTS plugin — calls F5-TTS service at /tts."""
+"""Chatterbox TTS plugin — calls TTS service at /tts."""
 from __future__ import annotations
 
 import io
@@ -17,11 +17,11 @@ from livekit.agents.utils import shortuuid
 
 try:
     import soundfile as sf
-except ImportError:  # pragma: no cover
+except ImportError:
     sf = None
 
 
-class F5TTSPlugin(TTS):
+class ChatterboxTTSPlugin(TTS):
     def __init__(
         self,
         *,
@@ -38,11 +38,11 @@ class F5TTSPlugin(TTS):
 
     @property
     def model(self) -> str:
-        return "Eempostor/F5-TTS-INDO-FINETUNE-V2"
+        return "grandhigh/Chatterbox-TTS-Indonesian"
 
     @property
     def provider(self) -> str:
-        return "local-gx10"
+        return "local-wsl2"
 
     def synthesize(
         self,
@@ -52,10 +52,9 @@ class F5TTSPlugin(TTS):
     ) -> ChunkedStream:
         if conn_options is None:
             from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
-
             conn_options = DEFAULT_API_CONNECT_OPTIONS
 
-        return _F5TTSChunkedStream(
+        return _ChatterboxChunkedStream(
             tts=self,
             input_text=text,
             conn_options=conn_options,
@@ -63,7 +62,7 @@ class F5TTSPlugin(TTS):
         )
 
 
-class _F5TTSChunkedStream(ChunkedStream):
+class _ChatterboxChunkedStream(ChunkedStream):
     def __init__(
         self,
         *,
@@ -77,10 +76,10 @@ class _F5TTSChunkedStream(ChunkedStream):
 
     async def _run(self, output_emitter: AudioEmitter) -> None:
         if sf is None:
-            raise ImportError("soundfile is required for F5-TTS plugin")
+            raise ImportError("soundfile is required for Chatterbox TTS plugin")
 
-        timeout = self._conn_options.timeout if self._conn_options.timeout else 60.0
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
+        # ponytail: ignore conn_options timeout, force 300s — LiveKit default too short
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
             resp = await client.post(
                 f"{self._endpoint}/tts",
                 params={"text": self.input_text},
@@ -103,5 +102,4 @@ class _F5TTSChunkedStream(ChunkedStream):
             mime_type="audio/pcm",
         )
         output_emitter.push(pcm)
-        # flush so AudioEmitter's internal frame builder sends with is_final=True
         output_emitter.flush()

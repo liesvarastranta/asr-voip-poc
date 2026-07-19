@@ -1,30 +1,30 @@
-"""Tests for QwenASRSTT plugin."""
+"""Tests for WhisperASRSTT plugin."""
 import pytest
 
 
-def test_qwen_asr_stt_import():
-    from livekit_agent.qwen_asr_stt import QwenASRSTT
-    assert QwenASRSTT is not None
+def test_whisper_asr_stt_import():
+    from livekit_agent.whisper_asr_stt import WhisperASRSTT
+    assert WhisperASRSTT is not None
 
 
-def test_qwen_asr_stt_constructor():
-    from livekit_agent.qwen_asr_stt import QwenASRSTT
-    stt = QwenASRSTT(endpoint="http://localhost:18001")
-    assert stt.model == "Qwen/Qwen3-ASR-1.7B-hf"
-    assert stt.provider == "local-gx10"
+def test_whisper_asr_stt_constructor():
+    from livekit_agent.whisper_asr_stt import WhisperASRSTT
+    stt = WhisperASRSTT(endpoint="http://localhost:18001")
+    assert stt.model == "openai/whisper-small"
+    assert stt.provider == "local-wsl2"
     caps = stt.capabilities
     assert caps.streaming is False
     assert caps.offline_recognize is True
 
 
-def test_qwen_asr_stt_empty_buffer():
+def test_whisper_asr_stt_empty_buffer():
     """Empty audio buffer returns empty transcript without HTTP call."""
     import asyncio
-    from livekit_agent.qwen_asr_stt import QwenASRSTT
+    from livekit_agent.whisper_asr_stt import WhisperASRSTT
     from livekit.agents.types import APIConnectOptions
 
     async def run():
-        stt_inst = QwenASRSTT()
+        stt_inst = WhisperASRSTT()
         result = await stt_inst._recognize_impl(
             [],
             language=None,

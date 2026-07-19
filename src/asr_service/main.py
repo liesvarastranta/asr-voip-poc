@@ -3,17 +3,17 @@ from fastapi import FastAPI
 from .config import settings
 from .engines.base import ASREngine
 from .engines.mock import MockASREngine
-from .engines.qwen_asr import Qwen3ASREngine
+from .engines.faster_whisper import FasterWhisperEngine
 from .api import health, transcribe, stream
 
 
 def create_app(engine: ASREngine | None = None) -> FastAPI:
     if engine is None:
         if settings.device.startswith("cuda"):
-            engine = Qwen3ASREngine(
+            engine = FasterWhisperEngine(
                 model_id=settings.model_id,
                 device=settings.device,
-                dtype=settings.dtype,
+                compute_type=settings.compute_type,
             )
         else:
             engine = MockASREngine()
@@ -27,7 +27,7 @@ def create_app(engine: ASREngine | None = None) -> FastAPI:
     app = FastAPI(
         title="ASR Service POC",
         version="0.1.0",
-        description="Automatic Speech Recognition — Qwen3-ASR-1.7B on ASUS Ascent GX10",
+        description="Automatic Speech Recognition — faster-whisper-large-v3 on WSL2",
         lifespan=lifespan,
     )
 

@@ -1,9 +1,7 @@
-"""LiveKit Voice Agent — Indonesia ASR + LLM + TTS.
+"""LiveKit Voice Agent — Indonesia ASR + LLM + TTS (WSL2 native).
 
 Usage:
-  python agent.py console      # terminal mode, local mic (no LiveKit server needed)
   python agent.py dev          # dev mode, connects to LiveKit server
-  python agent.py start        # production mode
 """
 import os
 from dotenv import load_dotenv
@@ -14,40 +12,46 @@ from livekit.agents import (
     Agent,
     AgentSession,
     JobContext,
+    AgentServer,
     cli,
+    room_io,
 )
 from livekit.agents import stt as stt_mod
 from livekit.plugins import silero, openai
 
-from qwen_asr_stt import QwenASRSTT
-from f5_tts_plugin import F5TTSPlugin
+from whisper_asr_stt import WhisperASRSTT
+from chatterbox_tts_plugin import ChatterboxTTSPlugin
+
+server = AgentServer()
 
 
 class VoiceAgent(Agent):
     pass
 
 
+@server.rtc_session(agent_name="voice-agent-id")
 async def entrypoint(ctx: JobContext):
     asr_endpoint = os.getenv("ASR_ENDPOINT", "http://localhost:18001")
     vllm_endpoint = os.getenv("VLLM_ENDPOINT", "http://localhost:18002/v1")
     tts_endpoint = os.getenv("TTS_ENDPOINT", "http://localhost:18003")
 
     # ASR: custom STT wrapped with StreamAdapter (VAD -> buffer -> batch -> final)
-    asr_stt = QwenASRSTT(endpoint=asr_endpoint, language="id")
+    asr_stt = WhisperASRSTT(endpoint=asr_endpoint, language="id")
     streaming_stt = stt_mod.StreamAdapter(
         stt=asr_stt,
         vad=silero.VAD.load(),
     )
 
-    # LLM: vLLM (OpenAI-compatible)
+    # LLM: llama-cpp-python (OpenAI-compatible)
     llm = openai.LLM(
-        model="Qwen/Qwen3.6-35B-A3B",
+        model="Llama-3.2-1B-Instruct",
         base_url=vllm_endpoint,
-        api_key="local",  # vLLM does not validate
+        api_key="local",
+        extra_body={"max_tokens": 100},
     )
 
-    # TTS: F5-TTS
-    tts_inst = F5TTSPlugin(endpoint=tts_endpoint)
+    # TTS: Chatterbox
+    tts_inst = ChatterboxTTSPlugin(endpoint=tts_endpoint)
 
     # VAD
     vad = silero.VAD.load()
@@ -79,7 +83,14 @@ async def entrypoint(ctx: JobContext):
             ),
         ),
         room=ctx.room,
+        room_options=room_io.RoomOptions(
+            text_output=room_io.TextOutputOptions(
+                sync_transcription=False,
+            ),
+        ),
     )
+
+    await ctx.connect()
 
     await session.generate_reply(
         instructions="Sapa pengguna dalam Bahasa Indonesia dengan ramah dan singkat."
@@ -87,4 +98,4 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(agent_output=entrypoint)
+    cli.run_app(server)
