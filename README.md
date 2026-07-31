@@ -1,6 +1,6 @@
 # ASR VoIP POC — Voice AI Bahasa Indonesia
 
-Real-time voice pipeline: ASR → LLM → TTS, native WSL2 with CUDA acceleration.
+Real-time voice pipeline: **ASR → LLM → TTS** via LiveKit. Model AI berjalan di cloud (Groq, Bifrost, Edge TTS) — tanpa perlu GPU lokal.
 
 ## Demo
 
@@ -10,71 +10,84 @@ Real-time voice pipeline: ASR → LLM → TTS, native WSL2 with CUDA acceleratio
 
 ## Stack
 
-| Component | Model | VRAM | Port |
-|-----------|-------|------|------|
-| ASR | openai/whisper-small (faster-whisper, int8_float16) | ~1GB | 18001 |
-| LLM | Llama-3.2-1B-Instruct (GGUF Q4_K_M, CUDA) | ~0.7GB | 18002 |
-| TTS | grandhigh/Chatterbox-TTS-Indonesian | ~1.5GB | 18003 |
-| Real-time | LiveKit Agents SDK + Silero VAD | — | 7880 |
-| Web App | Vanilla HTML/JS + LiveKit client | — | 8080 |
+| Komponen | Backend | Model | Lokasi |
+|----------|---------|-------|--------|
+| ASR | Groq API | whisper-large-v3 | cloud |
+| LLM | Bifrost gateway | llama.cpp/gemma-4-12b-it-q8 | cloud |
+| TTS | Microsoft Edge TTS | id-ID-ArdiNeural | cloud |
+| Realtime | LiveKit Server (Docker) | Silero VAD | VM |
+| Web App | Vanilla HTML/JS + livekit-client v2 | — | VM |
 
-**Total VRAM**: ~4.2GB (RTX 3070Ti 8GB)
+Tidak ada kebutuhan VRAM lokal — semua inference di cloud.
 
 ## Quickstart
 
 ```bash
-# 1. Install system deps (one-time)
-sudo apt-get install -y build-essential cmake nvidia-cuda-toolkit
-
-# 2. Setup: venv + deps + LiveKit binary + download models
+# 1. Setup: venv + deps
 make setup
 
-# 3. Start full stack
-make all && make web
+# 2. Konfigurasi .env
+cp livekit_agent/.env.example livekit_agent/.env
+# isi: ASR_API_KEY (Groq), BIFROST_API_KEY, BIFROST_MODEL
 
-# 4. Open browser
-# → http://localhost:8080
+# 3. Start LiveKit server (Docker)
+docker run -d --name livekit-server --restart unless-stopped \
+  -p 7880:7880 -p 7881:7881 -p 7882:7882/udp \
+  -v "$(pwd)/livekit_server/livekit.yaml:/etc/livekit.yaml" \
+  livekit/livekit-server:latest --config /etc/livekit.yaml
+
+# 4. Start TLS proxy (nginx, HTTPS untuk mic access)
+docker run -d --name nginx-proxy --restart unless-stopped \
+  -p 8443:8443 --network lk-proxy \
+  --add-host host.docker.internal:host-gateway \
+  -v "$(pwd)/livekit_server/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+  -v "$(pwd)/certs:/etc/nginx/certs:ro" \
+  nginx:alpine
+docker network connect lk-proxy livekit-server
+
+# 5. Start web + agent
+make web
+make agent
+
+# 6. Buka browser
+# → https://<ip-vm>:8443 (accept self-signed cert)
 # → Klik "Mulai Bicara" → Bicara dalam Bahasa Indonesia
 ```
 
-## Web App
+## HTTPS & Akses
 
-Buka **http://localhost:8080** setelah menjalankan `make all && make web`:
+- **Web UI**: `https://<ip-vm>:8443` (via nginx TLS reverse proxy)
+- **LiveKit signaling**: `wss://<ip-vm>:8443/rtc` (nginx → LiveKit :7880)
+- **Media WebRTC**: langsung ke LiveKit `:7881/:7882` (UDP/TCP)
+- **HTTPS wajib** agar browser mengizinkan akses mikrofon (`getUserMedia` butuh secure context)
+- **Self-signed cert** (`certs/`, generate via openssl) → browser tampilkan warning, klik "Proceed"
+- **Publik?** Tidak. Hanya bisa diakses dari jaringan LAN VM (dan port harus diizinkan firewall). Untuk akses publik perlu domain + Let's Encrypt + firewall terbuka.
 
-1. Klik **"Mulai Bicara"**
-2. Izinkan akses mikrofon
-3. Bicara dalam Bahasa Indonesia
-4. Web app menampilkan: transkripsi realtime (user + agent), aktivitas sistem, audio agent
+## Arsitektur
 
-Fitur: mic auto-disable saat agent memproses, transkripsi via text streams.
+```
+Browser → https://<ip-vm>:8443 (nginx TLS)
+            ├── /      → web UI :8080
+            ├── /rtc   → wss → LiveKit :7880
+            └── media  → LiveKit :7881/:7882 (WebRTC direct)
+                              │
+                         Voice Agent
+                            ├──→ ASR: Groq Whisper (cloud)
+                            ├──→ LLM: Bifrost Gemma 4 (cloud)
+                            └──→ TTS: Edge TTS (cloud)
+```
 
-## Services (`make` targets)
+## Services
 
 | Target | Service | Port |
 |--------|---------|------|
-| `make setup` | One-time venv + deps + model download | — |
-| `make all` | Start all services | — |
-| `make asr` | ASR (faster-whisper) | 18001 |
-| `make llm` | LLM (llama-cpp-python) | 18002 |
-| `make tts` | TTS (Chatterbox) | 18003 |
-| `make livekit` | LiveKit WebRTC SFU | 7880 |
+| `make web` | Web client (HTTPS via nginx) | 8080/8443 |
 | `make agent` | Voice agent (LiveKit Agents) | — |
-| `make web` | Web client | 8080 |
-| `make stop` | Stop all services | — |
-| `make test` | Run test suite | — |
-| `make download` | Download models | — |
+| LiveKit (Docker) | WebRTC SFU | 7880/7881/7882 |
+| nginx (Docker) | TLS reverse proxy | 8443 |
+| `make test` | Test suite | — |
 
-## Architecture
-
-```
-LiveKit Server :7880
-      ↕ WebRTC
-  Voice Agent ──→ ASR :18001 (whisper-small)
-      │          ──→ LLM :18002 (Llama-1B CUDA)
-      │          ──→ TTS :18003 (Chatterbox)
-      ↕ WebRTC
-  Web App :8080 (LiveKit client)
-```
+`make all`/`make asr`/`make llm`/`make tts` mengacu stack lama (local inference) — tidak dipakai di konfigurasi cloud ini.
 
 ## Development
 
