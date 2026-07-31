@@ -23,8 +23,9 @@ def _default_livekit_url() -> str:
         s.close()
     except OSError:
         ip = "127.0.0.1"
-    # TLS proxy fronting web UI + LiveKit signaling on :8443 (see livekit_server/nginx)
-    return f"wss://{ip}:8443/rtc"
+    # TLS proxy fronting web UI + LiveKit signaling (see livekit_server/nginx).
+    # IMPORTANT: NO /rtc suffix — livekit-client v2 appends its own path (rtc).
+    return f"wss://{ip}:8443"
 
 
 LIVEKIT_URL = _default_livekit_url()
