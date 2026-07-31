@@ -49,3 +49,7 @@ skills-lock.json
 opencode.json
 node_modules/
 text.txt
+
+# Personal/admin (not part of project)
+.bg-shell/
+.gsd/
