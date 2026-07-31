@@ -34,7 +34,8 @@ async def entrypoint(ctx: JobContext):
     asr_endpoint = os.getenv("ASR_ENDPOINT", "http://localhost:18001")
     asr_api_key = os.getenv("ASR_API_KEY", "")
     asr_model = os.getenv("ASR_MODEL", "")
-    tts_endpoint = os.getenv("TTS_ENDPOINT", "http://localhost:18003")
+    tts_endpoint = os.getenv("TTS_ENDPOINT", "")
+    tts_voice = os.getenv("TTS_VOICE", "id-ID-ArdiNeural")
 
     # LLM: Bifrost gateway (Gemma 4 via llama.cpp, remote, OpenAI-compatible)
     bifrost_url = os.getenv("BIFROST_URL", "https://bifrost.hcm-lab.id/v1")
@@ -60,8 +61,9 @@ async def entrypoint(ctx: JobContext):
         api_key=bifrost_key,
     )
 
-    # TTS: Chatterbox
-    tts_inst = ChatterboxTTSPlugin(endpoint=tts_endpoint)
+    # TTS: Edge TTS (default, cloud, free) or local Chatterbox (if TTS_ENDPOINT set)
+    tts_inst = ChatterboxTTSPlugin(endpoint=tts_endpoint, voice=tts_voice)
+    print(f"[AGENT] TTS provider: {tts_inst.provider} ({tts_inst.model}, voice={tts_voice})")
 
     # VAD
     vad = silero.VAD.load()
