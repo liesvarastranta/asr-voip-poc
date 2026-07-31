@@ -32,8 +32,12 @@ class VoiceAgent(Agent):
 @server.rtc_session(agent_name="voice-agent-id")
 async def entrypoint(ctx: JobContext):
     asr_endpoint = os.getenv("ASR_ENDPOINT", "http://localhost:18001")
-    vllm_endpoint = os.getenv("VLLM_ENDPOINT", "http://localhost:18002/v1")
     tts_endpoint = os.getenv("TTS_ENDPOINT", "http://localhost:18003")
+
+    # LLM: Bifrost gateway (Gemma 4 via llama.cpp, remote, OpenAI-compatible)
+    bifrost_url = os.getenv("BIFROST_URL", "https://bifrost.hcm-lab.id/v1")
+    bifrost_key = os.getenv("BIFROST_API_KEY", "")
+    bifrost_model = os.getenv("BIFROST_MODEL", "llama.cpp/gemma-4-12b-it-q8")
 
     # ASR: custom STT wrapped with StreamAdapter (VAD -> buffer -> batch -> final)
     asr_stt = WhisperASRSTT(endpoint=asr_endpoint, language="id")
@@ -42,12 +46,11 @@ async def entrypoint(ctx: JobContext):
         vad=silero.VAD.load(),
     )
 
-    # LLM: llama-cpp-python (OpenAI-compatible)
+    # LLM: Bifrost gateway (Gemma 4 via llama.cpp, remote, OpenAI-compatible)
     llm = openai.LLM(
-        model="Llama-3.2-1B-Instruct",
-        base_url=vllm_endpoint,
-        api_key="local",
-        extra_body={"max_tokens": 100},
+        model=bifrost_model,
+        base_url=bifrost_url,
+        api_key=bifrost_key,
     )
 
     # TTS: Chatterbox
