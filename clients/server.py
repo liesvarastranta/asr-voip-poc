@@ -6,7 +6,11 @@ from livekit import api
 
 
 def _default_livekit_url() -> str:
-    """Pick a LiveKit URL reachable from LAN clients (not localhost)."""
+    """Pick a LiveKit URL reachable from LAN clients.
+
+    If page is served behind HTTPS (TLS proxy), signaling must be wss://.
+    Defaults to ws://<lan-ip>:7880; override via LIVEKIT_URL env.
+    """
     env_url = os.getenv("LIVEKIT_URL")
     if env_url and "localhost" not in env_url and "127.0.0.1" not in env_url:
         return env_url
@@ -19,7 +23,8 @@ def _default_livekit_url() -> str:
         s.close()
     except OSError:
         ip = "127.0.0.1"
-    return f"ws://{ip}:7880"
+    # TLS proxy fronting web UI + LiveKit signaling on :8443 (see livekit_server/nginx)
+    return f"wss://{ip}:8443/rtc"
 
 
 LIVEKIT_URL = _default_livekit_url()

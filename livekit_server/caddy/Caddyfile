@@ -1,0 +1,15 @@
+{
+    admin off
+}
+
+https://10.9.23.172:8443 {
+    tls /certs/cert.pem /certs/key.pem
+
+    handle /rtc* {
+        reverse_proxy livekit-server:7880
+    }
+
+    handle {
+        reverse_proxy host.docker.internal:8080
+    }
+}

@@ -53,3 +53,4 @@ text.txt
 # Personal/admin (not part of project)
 .bg-shell/
 .gsd/
+certs/
