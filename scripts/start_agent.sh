@@ -10,10 +10,11 @@ source "$PROJECT_DIR/.venv/bin/activate"
 export LIVEKIT_URL="${LIVEKIT_URL:-ws://localhost:7880}"
 export LIVEKIT_API_KEY="${LIVEKIT_API_KEY:-devkey}"
 export LIVEKIT_API_SECRET="${LIVEKIT_API_SECRET:-secret}"
-export ASR_ENDPOINT="${ASR_ENDPOINT:-http://localhost:18001}"
-export VLLM_ENDPOINT="${VLLM_ENDPOINT:-http://localhost:18002/v1}"
-export TTS_ENDPOINT="${TTS_ENDPOINT:-http://localhost:18003}"
 export PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR/livekit_agent"
+
+# NOTE: jangan export ASR_ENDPOINT/VLLM_ENDPOINT/TTS_ENDPOINT di sini.
+# agent.py baca dari livekit_agent/.env via load_dotenv(); export di sini
+# justru OVERRIDE .env (load_dotenv default override=False).
 
 cd "$PROJECT_DIR/livekit_agent"
 nohup python agent.py dev > "$PROJECT_DIR/logs/agent.log" 2>&1 &
