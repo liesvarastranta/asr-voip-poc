@@ -32,6 +32,8 @@ class VoiceAgent(Agent):
 @server.rtc_session(agent_name="voice-agent-id")
 async def entrypoint(ctx: JobContext):
     asr_endpoint = os.getenv("ASR_ENDPOINT", "http://localhost:18001")
+    asr_api_key = os.getenv("ASR_API_KEY", "")
+    asr_model = os.getenv("ASR_MODEL", "")
     tts_endpoint = os.getenv("TTS_ENDPOINT", "http://localhost:18003")
 
     # LLM: Bifrost gateway (Gemma 4 via llama.cpp, remote, OpenAI-compatible)
@@ -40,7 +42,12 @@ async def entrypoint(ctx: JobContext):
     bifrost_model = os.getenv("BIFROST_MODEL", "llama.cpp/gemma-4-12b-it-q8")
 
     # ASR: custom STT wrapped with StreamAdapter (VAD -> buffer -> batch -> final)
-    asr_stt = WhisperASRSTT(endpoint=asr_endpoint, language="id")
+    # Auto-detect: if ASR_API_KEY set + endpoint is OpenAI-compatible (groq/openai),
+    # uses openai SDK. Otherwise hits local custom /v1/asr/transcribe.
+    asr_stt = WhisperASRSTT(
+        endpoint=asr_endpoint, language="id", api_key=asr_api_key, model=asr_model
+    )
+    print(f"[AGENT] ASR provider: {asr_stt.provider} ({asr_stt.model})")
     streaming_stt = stt_mod.StreamAdapter(
         stt=asr_stt,
         vad=silero.VAD.load(),
