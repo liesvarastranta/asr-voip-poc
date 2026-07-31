@@ -5,7 +5,24 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from livekit import api
 
 
-LIVEKIT_URL = os.getenv("LIVEKIT_URL", "ws://localhost:7880")
+def _default_livekit_url() -> str:
+    """Pick a LiveKit URL reachable from LAN clients (not localhost)."""
+    env_url = os.getenv("LIVEKIT_URL")
+    if env_url and "localhost" not in env_url and "127.0.0.1" not in env_url:
+        return env_url
+    # auto-detect non-loopback IPv4
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except OSError:
+        ip = "127.0.0.1"
+    return f"ws://{ip}:7880"
+
+
+LIVEKIT_URL = _default_livekit_url()
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "devkey")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
 PORT = int(os.getenv("WEB_PORT", "8080"))
